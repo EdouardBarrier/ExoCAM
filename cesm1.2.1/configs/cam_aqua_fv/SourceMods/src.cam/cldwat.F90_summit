@@ -416,7 +416,7 @@ subroutine pcond (lchnk   ,ncol    , &
    iter = 1   ! number of times to iterate the precipitation calculation
 #else
    mincld = 1.e-4_r8
-   iter = 2
+   iter = 64
 #endif
 !   omsm = 0.99999
    cpohl = cpair/latvap
@@ -881,21 +881,24 @@ subroutine pcond (lchnk   ,ncol    , &
          do l = 1,iter
             do i = 1,ncol
                if (rcwn(i,l,k).lt.0._r8) then
-                  write(iulog,*) ' prob with neg rcwn1 ', rcwn(i,l,k),  &
-                     cwnsave(i,l,k)
-                  write(iulog,*) ' cwat, cme*deltat, prodprec*deltat ', &
-                     cwat(i,k), cmesave(i,l,k)*deltat,               &
-                     prodprecsave(i,l,k)*deltat,                     &
-                     (cmesave(i,l,k)-prodprecsave(i,l,k))*deltat
-                  call endrun('PCOND')
+                   rcwn(i,l,k) = 0.0 !KLUDGE WOLF
+!                  write(iulog,*) ' prob with neg rcwn1 ', rcwn(i,l,k),  &
+!                     cwnsave(i,l,k)
+!                  write(iulog,*) ' cwat, cme*deltat, prodprec*deltat ', &
+!                     cwat(i,k), cmesave(i,l,k)*deltat,               &
+!                     prodprecsave(i,l,k)*deltat,                     &
+!                     (cmesave(i,l,k)-prodprecsave(i,l,k))*deltat
+!                  call endrun('PCOND')
                endif
                if (rliq(i,l,k).lt.0._r8) then
-                  write(iulog,*) ' prob with neg rliq1 ', rliq(i,l,k)
-                  call endrun('PCOND')
+                   rliq(i,l,k) = 0.0 !KLUDGE WOLF
+!                  write(iulog,*) ' prob with neg rliq1 ', rliq(i,l,k)
+!                  call endrun('PCOND')
                endif
                if (rice(i,l,k).lt.0._r8) then
-                  write(iulog,*) ' prob with neg rice ', rice(i,l,k)
-                  call endrun('PCOND')
+                   rice(i,l,k) = 0.0 !KLUDGE WOLF
+!                  write(iulog,*) ' prob with neg rice ', rice(i,l,k)
+!                  call endrun('PCOND')
                endif
             enddo
          enddo

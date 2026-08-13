@@ -29,9 +29,11 @@ use physconst,    only: epsilo, &
                         latice, &
                         rh2o,   &
                         cpair,  &
+                        cpliq,  &
                         tmelt,  &
                         h2otrip, &
-                        rair
+                        rair,   &
+                        cpwv
 
 use wv_sat_methods, only: &
      svp_to_qsat => wv_sat_svp_to_qsat, &
@@ -339,7 +341,7 @@ elemental function tq_enthalpy(t, q, hltalt) result(enthalpy)
 
   real(r8) :: enthalpy
 
-  enthalpy = cpair * t + hltalt * q
+  enthalpy = ((1-q)*cpair + q*cpwv) * t + hltalt * q
   
 end function tq_enthalpy
 
@@ -447,6 +449,7 @@ elemental subroutine deriv_outputs(t, p, es, qs, hltalt, tterm, &
   ! Local variables
   real(r8) :: desdt        ! d(es)/dt
   real(r8) :: dqsdt_loc    ! local copy of dqsdt
+  real(r8) :: cpmix        ! cp of saturated env heat capacity
 
   if (qs == 1.0_r8) then
      dqsdt_loc = 0._r8
@@ -455,8 +458,10 @@ elemental subroutine deriv_outputs(t, p, es, qs, hltalt, tterm, &
      dqsdt_loc = qs*p*desdt/(es*(p-omeps*es))
   end if
 
+  cpmix = ((1-qs)*cpair + qs*cpwv)
+
   if (present(dqsdt)) dqsdt = dqsdt_loc
-  if (present(gam))   gam   = dqsdt_loc * (hltalt/cpair)
+  if (present(gam))   gam   = dqsdt_loc * (hltalt/cpmix)
 
 end subroutine deriv_outputs
 
@@ -513,7 +518,7 @@ elemental subroutine qsat(t, p, es, qs, gam, dqsdt, enthalpy)
 
   real(r8), intent(out), optional :: gam    ! (l/cpair)*(d(qs)/dt)
   real(r8), intent(out), optional :: dqsdt  ! (d(qs)/dt)
-  real(r8), intent(out), optional :: enthalpy ! cpair*t + hltalt*q
+  real(r8), intent(out), optional :: enthalpy ! cpmix*t + hltalt*q
 
   ! Local variables
   real(r8) :: hltalt       ! Modified latent heat for T derivatives
@@ -562,7 +567,7 @@ elemental subroutine qsat_water(t, p, es, qs, gam, dqsdt, enthalpy)
 
   real(r8), intent(out), optional :: gam    ! (l/cpair)*(d(qs)/dt)
   real(r8), intent(out), optional :: dqsdt  ! (d(qs)/dt)
-  real(r8), intent(out), optional :: enthalpy ! cpair*t + hltalt*q
+  real(r8), intent(out), optional :: enthalpy ! cpmix*t + hltalt*q
 
   ! Local variables
   real(r8) :: hltalt       ! Modified latent heat for T derivatives
@@ -658,11 +663,31 @@ subroutine findsp_vc(q, t, p, use_ice, tsp, qsp)
                                ! 4 => Temperature fell below minimum
                                ! 8 => Enthalpy not conserved
 
-  integer :: n, i
+  integer :: l_found(size(q)) !on which of the iterations the successful q was found
+
+  real(r8) :: dq(size(q), 64)
+  real(r8) :: dt(size(q), 64)
+  real(r8) :: g(size(q), 64)
+  real(r8) :: dgdt(size(q), 64)
+  real(r8) :: dtfg(size(q))
+  real(r8) :: enin(size(q))
+  real(r8) :: enout(size(q), 64)
+  real(r8) :: t1(size(q), 64)
+  real(r8) :: q1(size(q), 64)
+  real(r8) :: cpmix(size(q), 64)
+  real(r8) :: gam(size(q), 64)
+  real(r8) :: dcpqdt(size(q), 64)
+  real(r8) :: hltalt(size(q), 64)
+
+
+  integer :: n, i, l
 
   n = size(q)
+  l=64 !max number of search iterations in findsp
 
-  call findsp(q, t, p, use_ice, tsp, qsp, status)
+  do i = 1,n
+   call findsp(q(i), t(i), p(i), use_ice, tsp(i), qsp(i), status(i), l_found(i), dq(i,:), dt(i,:), g(i,:), dgdt(i,:), dtfg(i), enin(i), enout(i,:), t1(i,:), q1(i,:), cpmix(i,:), gam(i,:), dcpqdt(i,:), hltalt(i,:))
+  end do
 
   ! Currently, only 2 and 8 seem to be treated as fatal errors.
   do i = 1,n
@@ -670,20 +695,33 @@ subroutine findsp_vc(q, t, p, use_ice, tsp, qsp)
         write(iulog,*) ' findsp not converging at i = ', i
         write(iulog,*) ' t, q, p ', t(i), q(i), p(i)
         write(iulog,*) ' tsp, qsp ', tsp(i), qsp(i)
+        write(iulog,*) ' enin:', enin(i), 'dtfg:', dtfg(i)
+        do l = 1,l_found(i)
+            write(iulog,*) ' dt:', dt(i,l), 'dq:', dq(i,l), 'g:', g(i,l), 'dgdt:', dgdt(i,l)
+            write(iulog,*) ' cpmix:', cpmix(i,l), "enout:", enout(i,l)
+            write(iulog,*) ' gam:', gam(i,l), 'tsp*(cpwv-cpair)*(1/hltalt)', dcpqdt(i,l), "hltalt:", hltalt(i,l)
+        end do
         call endrun ('wv_saturation::FINDSP -- not converging')
      else if (status(i) == 8) then
         write(iulog,*) ' the enthalpy is not conserved at i = ', i
         write(iulog,*) ' t, q, p ', t(i), q(i), p(i)
         write(iulog,*) ' tsp, qsp ', tsp(i), qsp(i)
+        write(iulog,*) ' enin:', enin(i), 'dtfg:', dtfg(i)
+        do l = 1,l_found(i)
+            write(iulog,*) ' dt:', dt(i,l), 'dq:', dq(i,l), 'g:', g(i,l), 'dgdt:', dgdt(i,l)
+            write(iulog,*) ' cpmix:', cpmix(i,l), "enout:", enout(i,l)
+            write(iulog,*) ' gam:', gam(i,l), 'tsp*(cpwv-cpair)*(1/hltalt)', dcpqdt(i,l), "hltalt:", hltalt(i,l)
+        end do
         call endrun ('wv_saturation::FINDSP -- enthalpy is not conserved')
      endif
   end do
 
 end subroutine findsp_vc
 
-elemental subroutine findsp (q, t, p, use_ice, tsp, qsp, status)
+subroutine findsp (q, t, p, use_ice, tsp, qsp, status, l_found, dq, dt, g, dgdt, dtfg, enin, enout, t1, q1, cpmix, gam, dcpqdt, hltalt)
+! some changes to increase number of outputs to help debug traces
 !----------------------------------------------------------------------- 
-! 
+!
 ! Purpose: 
 !     find the wet bulb temperature for a given t and q
 !     in a longitude height section
@@ -707,6 +745,8 @@ elemental subroutine findsp (q, t, p, use_ice, tsp, qsp, status)
 !
 !     input arguments
 !
+  use cam_logfile,  only: iulog
+
 
   real(r8), intent(in) :: q        ! water vapor (kg/kg)
   real(r8), intent(in) :: t        ! temperature (K)
@@ -724,6 +764,23 @@ elemental subroutine findsp (q, t, p, use_ice, tsp, qsp, status)
                                     ! 2 => Run failed to converge
                                     ! 4 => Temperature fell below minimum
                                     ! 8 => Enthalpy not conserved
+  integer, intent(out) :: l_found   !additional output, stage of iteration at which we stop / converge
+  real(r8), intent(out) :: dt(64)       ! additional output, change in guessed t at the last guess
+  real(r8), intent(out) :: dq(64)       ! additional output, change in guessed q at the last guess
+  real(r8), intent(out) :: g(64)        ! additional output, gam at last guess
+  real(r8), intent(out) :: dgdt(64)     ! additional output, change in g with t at the last guess
+  real(r8), intent(out) :: dtfg     ! additional output, change in t first guessed
+  real(r8), intent(out) :: enin     ! additional output, input enthalpy
+  real(r8), intent(out) :: enout(64)    ! additional output, final enthalpy
+  real(r8), intent(out) :: cpmix(64)    ! additional output, final cpmix
+  real(r8), intent(out) :: t1(64)       ! additional output, loop guess t
+  real(r8), intent(out) :: q1(64)       ! additional output, loop guess q
+  real(r8), intent(out) :: gam(64)      ! additional output, change in sat spec. hum. wrt temperature (times hltalt/cpair)
+  real(r8), intent(out) :: dcpqdt(64)   ! additional output, change in enthalpy wrt T due to cpmix changes
+  real(r8), intent(out) :: hltalt(64)   ! additional output, L
+
+
+
 !
 ! local variables
 !
@@ -731,19 +788,33 @@ elemental subroutine findsp (q, t, p, use_ice, tsp, qsp, status)
   integer :: l                      ! iterator
 
   real(r8) es                   ! sat. vapor pressure
-  real(r8) gam                  ! change in sat spec. hum. wrt temperature (times hltalt/cpair)
-  real(r8) dgdt                 ! work variable
-  real(r8) g                    ! work variable
-  real(r8) hltalt               ! lat. heat. of vap.
+!   real(r8) gam                  ! change in sat spec. hum. wrt temperature (times hltalt/cpair)
+!   real(r8) dgdt                 ! work variable
+!   real(r8) g                    ! work variable
+!   real(r8) hltalt               ! lat. heat. of vap.
   real(r8) qs                   ! spec. hum. of water vapor
 
 ! work variables
-  real(r8) t1, q1, dt, dq
+!   real(r8) t1, q1 !, dt, dq
   real(r8) qvd
   real(r8) r1b, c1, c2
   real(r8), parameter :: dttol = 1.e-4_r8 ! the relative temp error tolerance required to quit the iteration
   real(r8), parameter :: dqtol = 1.e-4_r8 ! the relative moisture error tolerance required to quit the iteration
-  real(r8) enin, enout
+!   real(r8) enin, enout
+!   real(r8) cpmix ! composition adjusted cp
+
+  dtfg = 0._r8
+  enout(:) = 0._r8
+  dt(:) = 0._r8
+  dq(:) = 0._r8
+  g(:) = 0._r8
+  dgdt(:) = 0._r8
+  cpmix(:) = 0._r8
+  t1(:) = 0._r8
+  q1(:) = 0._r8
+  gam(:) = 0._r8
+  hltalt(:) = 0._r8
+
 
   ! Saturation specific humidity at this temperature
   if (use_ice) then
@@ -760,8 +831,8 @@ elemental subroutine findsp (q, t, p, use_ice, tsp, qsp, status)
      tsp = t
      qsp = q
      enin = 1._r8
-     enout = 1._r8
-
+     enout(1) = 1._r8
+     l_found = 1
      return
   end if
 
@@ -770,71 +841,107 @@ elemental subroutine findsp (q, t, p, use_ice, tsp, qsp, status)
 
   ! Get initial enthalpy
   if (use_ice) then
-     call calc_hltalt(t,hltalt)
+     call calc_hltalt(t,hltalt(1))
   else
-     call no_ip_hltalt(t,hltalt)
+     call no_ip_hltalt(t,hltalt(1))
   end if
-  enin = tq_enthalpy(t, q, hltalt)
+  enin = tq_enthalpy(t, q, hltalt(1))
+  enin = (1-q)*cpair*t + q*cpliq*t+q*hltalt(1)
 
   ! make a guess at the wet bulb temp using a UKMO algorithm (from J. Petch)
-  c1 = hltalt*c3
+  c1 = hltalt(1)*c3
   c2 = (t + 36._r8)**2
   r1b = c2/(c2 + c1*qs)
   qvd = r1b * (q - qs)
-  tsp = t + ((hltalt/cpair)*qvd)
+  cpmix(1) = ((1-q)*cpair + q*cpwv)
+  tsp = t + ((hltalt(1)/cpmix(1))*qvd)
+  !dtfg = ((hltalt(1)/cpmix(1))*qvd)
+
+  dtfg = ((hltalt(1)/cpmix(1))*qvd)
+  dtfg = max(-15._r8, dtfg)
+  dtfg = min(15._r8, dtfg)
 
   ! Generate qsp, gam, and enout from tsp.
   if (use_ice) then
-     call qsat(tsp, p, es, qsp, gam=gam, enthalpy=enout)
+     call qsat(tsp, p, es, qsp, gam=gam(1), enthalpy=enout(1))
+     call calc_hltalt(tsp,hltalt)
   else
-     call qsat_water(tsp, p, es, qsp, gam=gam, enthalpy=enout)
+     call qsat_water(tsp, p, es, qsp, gam=gam(1), enthalpy=enout(1))
+     call no_ip_hltalt(tsp,hltalt(1))
   end if
+
+  enout(1) = (1-q)*cpair*tsp + q*cpliq*tsp + q*hltalt(1) + ((qsp-q)/(1-qsp))*(cpliq*tsp - cpliq*t + hltalt(1))
 
   ! iterate on first guess
   do l = 1, iter
 
-     g = enin - enout
-     dgdt = -cpair * (1 + gam)
+     l_found = l
+     g(l) = enin - enout(l)
+     cpmix(l) = ((1-q)*cpair + q*cpwv)
+     dgdt(l) = -cpmix(l) * (1 + gam(l) + tsp*(cpwv-cpair)*gam(l)*(1/hltalt(l)))  !changed to account for cp,m changing with Ts as well
+     dgdt(l) = (1-q)*cpair + q*cpwv + ((qsp-q)/(1-qsp))*cpwv + ((1-q)/((1-qsp)**2))*gam(l)*(cpmix(l)/hltalt(l))*(cpliq*tsp - cpliq*t + hltalt(l))
+
+     dcpqdt(l) = tsp*(cpwv-cpair)*(1/hltalt(l))
 
      ! New tsp
-     t1 = tsp - g/dgdt
-     dt = abs(t1 - tsp)/t1
-     tsp = t1
+     t1(l) = tsp - g(l)/dgdt(l)
+     dt(l) = abs(t1(l) - tsp)/t1(l)
+     tsp = t1(l)
 
      ! bail out if past end of temperature range
      if ( tsp < tmin ) then
         tsp = tmin
-        ! Get latent heat and set qsp to a value
-        ! that preserves enthalpy.
+        ! Get latent heat and set qsp to a value that preserves enthalpy.
         if (use_ice) then
-           call calc_hltalt(tsp,hltalt)
+           call calc_hltalt(tsp,hltalt(l))
         else
-           call no_ip_hltalt(tsp,hltalt)
+           call no_ip_hltalt(tsp,hltalt(l))
         end if
-        qsp = (enin - cpair*tsp)/hltalt
-        enout = tq_enthalpy(tsp, qsp, hltalt)
+        qsp = (enin - cpair*tsp)/(hltalt(l) + tsp*(cpwv-cpair))  !TODO: UPDATE PRIORITY: LOW
+        enout(l) = tq_enthalpy(tsp, qsp, hltalt(l))
         status = 4
         exit
      end if
 
      ! Re-generate qsp, gam, and enout from new tsp.
      if (use_ice) then
-        call qsat(tsp, p, es, q1, gam=gam, enthalpy=enout)
+        call qsat(tsp, p, es, q1(l), gam=gam(l), enthalpy=enout(l))
      else
-        call qsat_water(tsp, p, es, q1, gam=gam, enthalpy=enout)
+        call qsat_water(tsp, p, es, q1(l), gam=gam(l), enthalpy=enout(l))
      end if
-     dq = abs(q1 - qsp)/max(q1,1.e-12_r8)
-     qsp = q1
+     dq(l) = abs(q1(l) - qsp)/max(q1(l),1.e-12_r8)
+     qsp = q1(l)
+
+     if (qsp==1._r8) then !fatal error, q=1
+         status = 2
+         ! enout = (1-q)*cpair*tsp + q*cpliq*tsp + q*hltalt + ((qsp-q)/(1-qsp))*(cpliq*tsp - cpliq*t + hltalt)
+         exit
+     endif
+
+     enout(l) = (1-q)*cpair*tsp + q*cpliq*tsp + q*hltalt(l) + ((qsp-q)/(1-qsp))*(cpliq*tsp - cpliq*t + hltalt(l)) !output correct enout
+
 
      ! if converged at this point, exclude it from more iterations
-     if (dt < dttol .and. dq < dqtol) then
+     if (dt(l) < dttol .and. dq(l) < dqtol) then
         status = 0
         exit
      endif
   end do
 
   ! Test for enthalpy conservation
-  if (abs((enin-enout)/(enin+enout)) > 1.e-4_r8) status = 8
+  if (abs((enin-enout(l))/(enin+enout(l))) > 1.e-4_r8) status = 8
+
+!   if (status==8) then
+!       write(iulog,*) " "
+!       write(iulog,*) "findsp not converging."
+!       write(iulog,*) ' t, q, p ', t, q, p
+!       write(iulog,*) ' tsp, qsp ', tsp(i), qsp(i)
+!       write(iulog,*) ' dt:', dt(i), 'dq:', dq(i), 
+!       write(iulog,*) ' g:', g(i), 'dgdt:', dgdt(i), 'dtfg:', dtfg(i)
+!       write(iulog,*) ' enin:', enin, "enout:", enout
+!       write(iulog,*) ' t1:', t1, 'q1:', q1
+!       write(iulog,*) ' cpmix:', cpmix, 'gam:', gam, 'tsp*(cpwv-cpair)*(1/hltalt)', tsp*(cpwv-cpair)*(1/hltalt)
+!   end if
 
 end subroutine findsp
 

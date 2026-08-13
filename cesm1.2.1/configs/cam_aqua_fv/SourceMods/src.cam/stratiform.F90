@@ -346,7 +346,7 @@ end subroutine stratiform_init
 subroutine stratiform_tend( &
    state, ptend_all, pbuf, dtime, icefrac, &
    landfrac, ocnfrac, landm, snowh, dlf,   &
-   dlf2, rliq, cmfmc, cmfmc2, ts,          &
+   dlf2, rliq, zm_lcl, sh_lcl, cmfmc, cmfmc2, ts,          &
    sst, zdu)
 
    !-------------------------------------------------------- !  
@@ -383,6 +383,9 @@ subroutine stratiform_tend( &
    real(r8), intent(in)  :: dlf(pcols,pver)          ! Detrained water from convection schemes
    real(r8), intent(in)  :: dlf2(pcols,pver)         ! Detrained water from shallow convection scheme
    real(r8), intent(in)  :: rliq(pcols)              ! Vertical integral of liquid not yet in q(ixcldliq)
+   logical,  intent(in)  :: zm_lcl(pcols)            ! Whether the cloud deck was reached in the deep convective plume
+   logical,  intent(in)  :: sh_lcl(pcols)            ! Whether the cloud deck was reached in the shallow convective plume
+
    real(r8), intent(in)  :: cmfmc(pcols,pverp)       ! Deep + Shallow Convective mass flux [ kg /s/m^2 ]
    real(r8), intent(in)  :: cmfmc2(pcols,pverp)      ! Shallow convective mass flux [ kg/s/m^2 ]
 
@@ -656,23 +659,23 @@ subroutine stratiform_tend( &
    call t_startf("cldfrc")
    call cldfrc( lchnk, ncol, pbuf,                                  &
                 state1%pmid, state1%t, state1%q(:,:,1), state1%omega, state1%phis, &
-                shfrc, use_shfrc,                                                  &
+                shfrc, use_shfrc,                                          &
                 cld, rhcloud, clc, state1%pdel,                                    &
                 cmfmc, cmfmc2, landfrac,snowh, concld, cldst,                      &
                 ts, sst, state1%pint(:,pverp), zdu, ocnfrac, rhu00,                &
                 state1%q(:,:,ixcldice), icecldf, liqcldf,                          &
-                relhum, 0 )    
+                relhum, 0, zm_lcl, sh_lcl )    
 
    ! Re-calculate cloud with perturbed rh add call cldfrc to estimate rhdfda.
 
    call cldfrc( lchnk, ncol, pbuf,                                  &
                 state1%pmid, state1%t, state1%q(:,:,1), state1%omega, state1%phis, &
-                shfrc, use_shfrc,                                                  &
+                shfrc, use_shfrc,                                          &
                 cld2, rhcloud2, clc, state1%pdel,                                  &
                 cmfmc, cmfmc2, landfrac, snowh, concld2, cldst2,                   &
                 ts, sst, state1%pint(:,pverp), zdu, ocnfrac, rhu002,               &
                 state1%q(:,:,ixcldice), icecldf2, liqcldf2,                        &
-                relhum2, 1 )              
+                relhum2, 1, zm_lcl, sh_lcl )              
 
    call t_stopf("cldfrc")
 
@@ -857,12 +860,12 @@ subroutine stratiform_tend( &
       call t_startf("cldfrc")
       call cldfrc( lchnk, ncol, pbuf,                                  &
                    state1%pmid, state1%t, state1%q(:,:,1), state1%omega, state1%phis, &
-                   shfrc, use_shfrc,                                                  &
+                   shfrc, use_shfrc,                                          &
                    cld, rhcloud, clc, state1%pdel,                                    &
                    cmfmc, cmfmc2, landfrac, snowh, concld, cldst,                     &
                    ts, sst, state1%pint(:,pverp), zdu, ocnfrac, rhu00,                &
                    state1%q(:,:,ixcldice), icecldf, liqcldf,                          &
-                   relhum, 0 )    
+                   relhum, 0, zm_lcl, sh_lcl )    
       call t_stopf("cldfrc")
 
    endif

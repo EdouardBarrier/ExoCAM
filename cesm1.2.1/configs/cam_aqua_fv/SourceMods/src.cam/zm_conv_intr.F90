@@ -17,7 +17,7 @@ module zm_conv_intr
    use perf_mod
    use cam_logfile,  only: iulog
    use exoplanet_mod, only: exo_convect_plim
-
+   
    implicit none
    private
    save
@@ -41,10 +41,18 @@ module zm_conv_intr
 	! wg layer thickness in mbs (between upper/lower interface).
    real(r8), allocatable, dimension(:,:)   :: dsubcld  !(pcols,begchunk:endchunk)
 	! wg layer thickness in mbs between lcl and maxi.
+   real(r8), allocatable, dimension(:,:)   :: dsubcld_1  !(pcols,begchunk:endchunk)
+	! wg layer thickness in mbs between lcl and maxi.   
+   real(r8), allocatable, dimension(:,:)   :: dsubcld_2  !(pcols,begchunk:endchunk)
+	! wg layer thickness in mbs between lcl and maxi.
 
-   integer, allocatable, dimension(:,:) :: jt   !(pcols,begchunk:endchunk)
+   integer, allocatable, dimension(:,:) :: jt_1   !(pcols,begchunk:endchunk)
         ! wg top  level index of deep cumulus convection.
-   integer, allocatable, dimension(:,:) :: maxg !(pcols,begchunk:endchunk)
+   integer, allocatable, dimension(:,:) :: maxg_1 !(pcols,begchunk:endchunk)
+        ! wg gathered values of maxi.
+   integer, allocatable, dimension(:,:) :: jt_2   !(pcols,begchunk:endchunk)
+        ! wg top  level index of deep cumulus convection.
+   integer, allocatable, dimension(:,:) :: maxg_2 !(pcols,begchunk:endchunk)
         ! wg gathered values of maxi.
    integer, allocatable, dimension(:,:) :: ideep !(pcols,begchunk:endchunk)               
 	! w holds position of gathered points vs longitude index
@@ -147,15 +155,24 @@ subroutine zm_conv_init(pref_edge)
      allocate( dp(pcols,pver,begchunk:endchunk), stat=istat )
       call alloc_err( istat, 'zm_conv_tend', 'dp', &
                       pcols*pver*((endchunk-begchunk)+1) )
-     allocate( dsubcld(pcols,begchunk:endchunk), stat=istat )
-      call alloc_err( istat, 'zm_conv_tend', 'dsubcld', &
-                      pcols*((endchunk-begchunk)+1) )
-     allocate( jt(pcols,begchunk:endchunk), stat=istat )
-      call alloc_err( istat, 'zm_conv_tend', 'jt', &
-                      pcols*((endchunk-begchunk)+1) )
-     allocate( maxg(pcols,begchunk:endchunk), stat=istat )
-      call alloc_err( istat, 'zm_conv_tend', 'maxg', &
-                      pcols*((endchunk-begchunk)+1) )
+      allocate( dsubcld_1(pcols,begchunk:endchunk), stat=istat )
+      call alloc_err( istat, 'zm_conv_tend', 'dsubcld_1', &
+                     pcols*((endchunk-begchunk)+1) )
+   allocate( jt_1(pcols,begchunk:endchunk), stat=istat )
+      call alloc_err( istat, 'zm_conv_tend', 'jt_1', &
+                     pcols*((endchunk-begchunk)+1) )
+   allocate( maxg_1(pcols,begchunk:endchunk), stat=istat )
+      call alloc_err( istat, 'zm_conv_tend', 'maxg_1', &
+                     pcols*((endchunk-begchunk)+1) )
+   allocate( dsubcld_2(pcols,begchunk:endchunk), stat=istat )
+      call alloc_err( istat, 'zm_conv_tend', 'dsubcld_2', &
+                     pcols*((endchunk-begchunk)+1) )
+   allocate( jt_2(pcols,begchunk:endchunk), stat=istat )
+      call alloc_err( istat, 'zm_conv_tend', 'jt_2', &
+                     pcols*((endchunk-begchunk)+1) )
+   allocate( maxg_2(pcols,begchunk:endchunk), stat=istat )
+      call alloc_err( istat, 'zm_conv_tend', 'maxg_2', &
+                     pcols*((endchunk-begchunk)+1) )
      allocate( ideep(pcols,begchunk:endchunk), stat=istat )
       call alloc_err( istat, 'zm_conv_tend', 'ideep', &
                       pcols*((endchunk-begchunk)+1) )
@@ -190,9 +207,17 @@ subroutine zm_conv_init(pref_edge)
 
     call addfld ('PCONVB','Pa'    ,1 , 'A','convection base pressure',phys_decomp)
     call addfld ('PCONVT','Pa'    ,1 , 'A','convection top  pressure',phys_decomp)
+    call addfld('MX'     ,'level' ,1 , 'A','convection base level'   ,phys_decomp)
+    call addfld ('PCONVB_2','Pa'    ,1 , 'A','convection base pressure (Upper convective region)',phys_decomp)
+    call addfld ('PCONVT_2','Pa'    ,1 , 'A','convection top  pressure (Upper convective region)',phys_decomp)
+    call addfld('MX_2'     ,'level' ,1 , 'A','convection base level (Upper convective region)'   ,phys_decomp)
 
     call addfld ('CAPE',   'J/kg',       1, 'A', 'Convectively available potential energy', phys_decomp)
-    call addfld ('FREQZM ','fraction  ',1  ,'A', 'Fractional occurance of ZM convection',phys_decomp) 
+    call addfld ('CAPE_2', 'J/kg',       1, 'A', 'Convectively available potential energy (Upper convective region)', phys_decomp)
+    call addfld ('FREQZM'  ,'fraction  ',1  ,'A', 'Fractional occurance of ZM convection',phys_decomp)
+    call addfld ('FREQZM_1','fraction  ',1  ,'A', 'Fractional occurance of ZM convection (Lower convective region)',phys_decomp) 
+    call addfld ('FREQZM_2','fraction  ',1  ,'A', 'Fractional occurance of ZM convection (Upper convective region)',phys_decomp) 
+
 
     call addfld ('ZMMTT ', 'K/s',     pver, 'A', 'T tendency - ZM convective momentum transport',phys_decomp)
     call addfld ('ZMMTU',  'm/s2',    pver, 'A', 'U tendency - ZM convective momentum transport',  phys_decomp)
@@ -266,10 +291,10 @@ end subroutine zm_conv_init
 
 subroutine zm_conv_tend(pblh    ,mcon    ,cme     , &
      tpert   ,dlf     ,pflx    ,zdu      , &
-     rliq    , &
+     rliq    ,lcl_reached , &
      ztodt   , &
-     jctop   ,jcbot , &
-     state   ,ptend_all   ,landfrac,  pbuf)
+     jctop_1   ,jcbot_1 , &
+     state   ,ptend_all   ,landfrac,  sfcT, pbuf)
   
 
    use cam_history,   only: outfld
@@ -295,7 +320,8 @@ subroutine zm_conv_tend(pblh    ,mcon    ,cme     , &
    real(r8), intent(in) :: ztodt                       ! 2 delta t (model time increment)
    real(r8), intent(in) :: pblh(pcols)                 ! Planetary boundary layer height
    real(r8), intent(in) :: tpert(pcols)                ! Thermal temperature excess
-   real(r8), intent(in) :: landfrac(pcols)             ! RBN - Landfrac 
+   real(r8), intent(in) :: landfrac(pcols)             ! RBN - Landfrac
+   real(r8), intent(in) :: sfcT(pcols)                 ! surface temperature
 
    real(r8), intent(out) :: mcon(pcols,pverp)  ! Convective mass flux--m sub c
    real(r8), intent(out) :: dlf(pcols,pver)    ! scattrd version of the detraining cld h2o tend
@@ -304,7 +330,7 @@ subroutine zm_conv_tend(pblh    ,mcon    ,cme     , &
    real(r8), intent(out) :: zdu(pcols,pver)    ! detraining mass flux
 
    real(r8), intent(out) :: rliq(pcols) ! reserved liquid (not yet in cldliq) for energy integrals
-
+   logical,  intent(out) :: lcl_reached(pcols)  !whether the LCL was reached in these columns
 
    ! Local variables
 
@@ -340,15 +366,23 @@ subroutine zm_conv_tend(pblh    ,mcon    ,cme     , &
    real(r8), pointer, dimension(:,:) :: flxsnow      ! Convective-scale flux of snow   at interfaces (kg/m2/s)
    real(r8), pointer, dimension(:,:) :: dp_cldliq
    real(r8), pointer, dimension(:,:) :: dp_cldice
-   real(r8) :: jctop(pcols)  ! o row of top-of-deep-convection indices passed out.
-   real(r8) :: jcbot(pcols)  ! o row of base of cloud indices passed out.
+   real(r8) :: jctop_1(pcols)  ! o row of top-of-deep-convection indices passed out.
+   real(r8) :: jcbot_1(pcols)  ! o row of base of cloud indices passed out.
+   real(r8) :: jctop_2(pcols)  ! o row of top-of-deep-convection indices passed out.
+   real(r8) :: jcbot_2(pcols)  ! o row of base of cloud indices passed out.
 
-   real(r8) :: pcont(pcols), pconb(pcols), freqzm(pcols)
+   real(r8) :: pcont_1(pcols), pconb_1(pcols), freqzm_1(pcols), freqzm(pcols)
+   real(r8) :: pcont_2(pcols), pconb_2(pcols), freqzm_2(pcols)
 
    ! history output fields
-   real(r8) :: cape(pcols)        ! w  convective available potential energy.
+   real(r8) :: cape_1(pcols)        ! w  convective available potential energy.
+   real(r8) :: cape_2(pcols)
    real(r8) :: mu_out(pcols,pver)
    real(r8) :: md_out(pcols,pver)
+   integer  :: maxi_1(pcols)
+   integer  :: maxi_2(pcols)
+   real(r8) :: qtnd_2(pcols,pver)
+   real(r8) :: heat_2(pcols,pver)
 
    ! used in momentum transport calculation
    real(r8) :: winds(pcols, pver, 2)
@@ -363,6 +397,7 @@ subroutine zm_conv_tend(pblh    ,mcon    ,cme     , &
    integer  :: ii
 
    logical  :: lq(pcnst)
+   real(r8) :: capelmt = 70._r8  ! threshold value for cape for deep convection.
 
    !----------------------------------------------------------------------
 
@@ -375,6 +410,8 @@ subroutine zm_conv_tend(pblh    ,mcon    ,cme     , &
    mu_out(:,:) = 0._r8
    md_out(:,:) = 0._r8
    wind_tends(:ncol,:pver,:) = 0.0_r8
+   heat_2(:,:) = 0._r8
+   qtnd_2(:,:) = 0._r8
 
    call physics_state_copy(state,state1)             ! copy state to local state1.
 
@@ -395,30 +432,47 @@ subroutine zm_conv_tend(pblh    ,mcon    ,cme     , &
    call pbuf_get_field(pbuf, prec_dp_idx,     prec )
    call pbuf_get_field(pbuf, snow_dp_idx,     snow )
 
+!  write(iulog,*) "Before deep convection. lchnk:", lchnk, "Max temperature:", maxval(state1%t(:ncol,:pver)),"at:", maxloc(state1%t(:ncol,:pver)), "Min:", minval(state1%t(:ncol,:pver)), "at:", minloc(state1%t(:ncol,:pver)) !if (lchnk==60)
+
 !
 ! Begin with Zhang-McFarlane (1996) convection parameterization
 !
    call t_startf ('zm_convr')
 
    call zm_convr(   lchnk   ,ncol    , &
-                    state%t       ,state%q(:,:,1)     ,prec    ,jctop   ,jcbot   , &
-                    pblh    ,state%zm      ,state%phis    ,state%zi      ,ptend_loc%q(:,:,1)    , &
-                    ptend_loc%s    ,state%pmid     ,state%pint    ,state%pdel     , &
-                    .5_r8*ztodt    ,mcon    ,cme     , cape,      &
-                    tpert   ,dlf     ,pflx    ,zdu     ,rprd    , &
-                    mu(:,:,lchnk),md(:,:,lchnk),du(:,:,lchnk),eu(:,:,lchnk),ed(:,:,lchnk)      , &
-                    dp(:,:,lchnk) ,dsubcld(:,lchnk) ,jt(:,lchnk),maxg(:,lchnk),ideep(:,lchnk)   , &
-                    lengath(lchnk) ,ql      ,rliq  ,landfrac   )
+   state%t       ,state%q(:,:,1)   ,prec   ,jctop_1  ,jctop_2  , &
+   jcbot_1  , jcbot_2   , maxg_1(:,lchnk), maxg_2(:,lchnk), ideep(:,lchnk), &
+   pblh    ,state%zm      ,state%phis    ,state%zi      ,ptend_loc%q(:,:,1)    , &
+   ptend_loc%s    ,state%pmid     ,state%pint    ,state%pdel     , &
+   .5_r8*ztodt    ,mcon    ,cme     , cape_1     ,cape_2         , &
+   tpert   ,dlf     ,pflx    ,zdu     ,rprd    , &
+   mu(:,:,lchnk),md(:,:,lchnk),du(:,:,lchnk),eu(:,:,lchnk),ed(:,:,lchnk)      , &
+   dp(:,:,lchnk) ,dsubcld_1(:,lchnk) ,dsubcld_2(:,lchnk),jt_1(:,lchnk)   ,jt_2(:,lchnk)  , &
+   maxi_1  ,maxi_2    ,lengath(lchnk) ,ql      ,rliq  ,landfrac, sfcT, heat_2, qtnd_2, lcl_reached)
 
-   call outfld('CAPE', cape, pcols, lchnk)        ! RBN - CAPE output
+   call outfld('CAPE', cape_1, pcols, lchnk)        ! RBN - CAPE output
+   call outfld('CAPE_2', cape_2, pcols, lchnk)        ! RBN - CAPE output
+   !need to add additional CAPE 2 field
 !
+   ! maxg_2(:,lchnk) = 2
+   ! jt_2(:,lchnk) = 2
 ! Output fractional occurance of ZM convection
 !
    freqzm(:) = 0._r8
+   freqzm_1(:) = 0._r8
+   freqzm_2(:) = 0._r8
    do i = 1,lengath(lchnk)
       freqzm(ideep(i,lchnk)) = 1.0_r8
    end do
+   do i = 1,pcols
+      if (cape_1(i) > capelmt) freqzm_1(i) = 1.0_r8
+      if (cape_2(i) > capelmt) freqzm_2(i) = 1.0_r8
+   end do
+
    call outfld('FREQZM  ',freqzm          ,pcols   ,lchnk   )
+   call outfld('FREQZM_1',freqzm_1        ,pcols   ,lchnk   )
+   call outfld('FREQZM_2',freqzm_2        ,pcols   ,lchnk   )
+
 !
 ! Convert mass flux from reported mb/s to kg/m^2/s
 !
@@ -437,24 +491,32 @@ subroutine zm_conv_tend(pblh    ,mcon    ,cme     , &
    call outfld('ZMMU', mu_out(1,1), pcols, lchnk)
    call outfld('ZMMD', md_out(1,1), pcols, lchnk)
 
-   ftem(:ncol,:pver) = ptend_loc%s(:ncol,:pver)/cpair
+   ftem(:ncol,:pver) = heat_2(:ncol,:pver)/cpair
    call outfld('ZMDT    ',ftem           ,pcols   ,lchnk   )
-   call outfld('ZMDQ    ',ptend_loc%q(1,1,1) ,pcols   ,lchnk   )
+   call outfld('ZMDQ    ',qtnd_2 ,pcols   ,lchnk   )
    call t_stopf ('zm_convr')
 
-!    do i = 1,pcols
-!    do i = 1,nco
-   pcont(:ncol) = state%ps(:ncol)
-   pconb(:ncol) = state%ps(:ncol)
+   pcont_1(:ncol) = state%ps(:ncol)
+   pconb_1(:ncol) = state%ps(:ncol)
+   pcont_2(:ncol) = state%ps(:ncol)
+   pconb_2(:ncol) = state%ps(:ncol)
    do i = 1,lengath(lchnk)
-       if (maxg(i,lchnk).gt.jt(i,lchnk)) then
-          pcont(ideep(i,lchnk)) = state%pmid(ideep(i,lchnk),jt(i,lchnk))  ! gathered array (or jctop ungathered)
-          pconb(ideep(i,lchnk)) = state%pmid(ideep(i,lchnk),maxg(i,lchnk))! gathered array
-       endif
+      if (maxg_1(i,lchnk).gt.jt_1(i,lchnk)) then
+         pcont_1(ideep(i,lchnk)) = state%pmid(ideep(i,lchnk),jt_1(i,lchnk))  ! gathered array (or jctop ungathered)
+         pconb_1(ideep(i,lchnk)) = state%pmid(ideep(i,lchnk),maxg_1(i,lchnk))! gathered array
+      endif
+      if (maxg_2(i,lchnk).gt.jt_2(i,lchnk)) then
+        pcont_2(ideep(i,lchnk)) = state%pmid(ideep(i,lchnk),jt_2(i,lchnk))  ! gathered array (or jctop ungathered)
+        pconb_2(ideep(i,lchnk)) = state%pmid(ideep(i,lchnk),maxg_2(i,lchnk))! gathered array
+     endif
        !     write(iulog,*) ' pcont, pconb ', pcont(i), pconb(i), cnt(i), cnb(i)
     end do
-    call outfld('PCONVT  ',pcont          ,pcols   ,lchnk   )
-    call outfld('PCONVB  ',pconb          ,pcols   ,lchnk   )
+    call outfld('PCONVT  ',pcont_1        ,pcols   ,lchnk   )
+    call outfld('PCONVB  ',pconb_1        ,pcols   ,lchnk   )
+    call outfld('MX      ',real(maxi_1,8) ,pcols   ,lchnk   )
+    call outfld('PCONVT_2',pcont_1        ,pcols   ,lchnk   )
+    call outfld('PCONVB_2',pconb_1        ,pcols   ,lchnk   )
+    call outfld('MX_2    ',real(maxi_1,8) ,pcols   ,lchnk   )
 
   ! This name triggers a special case in physics_types.F90:physics_update()
   call physics_ptend_init(ptend_all, state%psetcols, 'convect_deep')
@@ -464,6 +526,8 @@ subroutine zm_conv_tend(pblh    ,mcon    ,cme     , &
 
   ! update physics state type state1 with ptend_loc 
   call physics_update(state1, ptend_loc, ztodt)
+
+!   write(iulog,*) "After zm_convr. lchnk:", lchnk, "Max temperature:", maxval(state1%t(:ncol,:pver)),"at:", maxloc(state1%t(:ncol,:pver)), "Min:", minval(state1%t(:ncol,:pver)), "at:", minloc(state1%t(:ncol,:pver))
 
   ! initialize ptend for next process
   lq(:) = .FALSE.
@@ -521,6 +585,7 @@ subroutine zm_conv_tend(pblh    ,mcon    ,cme     , &
   ! update physics state type state1 with ptend_loc 
   call physics_update(state1, ptend_loc, ztodt)
 
+!   if (lchnk==60) write(iulog,*) "After zm_conv_evap. lchnk:", lchnk, "Max temperature:", maxval(state1%t(:ncol,:pver)),"at:", maxloc(state1%t(:ncol,:pver)), "Min:", minval(state1%t(:ncol,:pver)), "at:", minloc(state1%t(:ncol,:pver))
 
   ! Momentum Transport (non-cam3 physics)
 
@@ -537,8 +602,8 @@ subroutine zm_conv_tend(pblh    ,mcon    ,cme     , &
      call t_startf ('momtran')
      call momtran (lchnk, ncol,                                        &
                    l_windt,winds, 2,  mu(1,1,lchnk), md(1,1,lchnk),   &
-                   du(1,1,lchnk), eu(1,1,lchnk), ed(1,1,lchnk), dp(1,1,lchnk), dsubcld(1,lchnk),  &
-                   jt(1,lchnk),maxg(1,lchnk), ideep(1,lchnk), 1, lengath(lchnk),  &
+                   du(1,1,lchnk), eu(1,1,lchnk), ed(1,1,lchnk), dp(1,1,lchnk),  &
+                   jt_1(1,lchnk),maxg_1(1,lchnk), jt_2(1,lchnk),maxg_2(1,lchnk), ideep(1,lchnk), 1, lengath(lchnk),  &
                    nstep,  wind_tends, pguall, pgdall, icwu, icwd, ztodt, seten )  
      call t_stopf ('momtran')
 
@@ -586,9 +651,9 @@ subroutine zm_conv_tend(pblh    ,mcon    ,cme     , &
    call t_startf ('convtran1')
    call convtran (lchnk,                                        &
                   ptend_loc%lq,state1%q, pcnst,  mu(:,:,lchnk), md(:,:,lchnk),   &
-                  du(:,:,lchnk), eu(:,:,lchnk), ed(:,:,lchnk), dp(:,:,lchnk), dsubcld(:,lchnk),  &
-                  jt(:,lchnk),maxg(:,lchnk), ideep(:,lchnk), 1, lengath(lchnk),  &
-                  nstep,   fracis,  ptend_loc%q, fake_dpdry)
+                  du(:,:,lchnk), eu(:,:,lchnk), ed(:,:,lchnk), dp(:,:,lchnk),  &
+                  jt_1(:,lchnk),maxg_1(:,lchnk), ideep(:,lchnk), 1, lengath(lchnk),  &
+                  nstep,   fracis,  ptend_loc%q, fake_dpdry, jt_2(:,lchnk),maxg_2(:,lchnk))
    call t_stopf ('convtran1')
 
    call outfld('ZMDICE ',ptend_loc%q(1,1,ixcldice) ,pcols   ,lchnk   )
@@ -662,9 +727,9 @@ subroutine zm_conv_tend_2( state,  ptend,  ztodt, pbuf)
       call t_startf ('convtran2')
       call convtran (lchnk,                                        &
                      ptend%lq,state%q, pcnst,  mu(:,:,lchnk), md(:,:,lchnk),   &
-                     du(:,:,lchnk), eu(:,:,lchnk), ed(:,:,lchnk), dp(:,:,lchnk), dsubcld(:,lchnk),  &
-                     jt(:,lchnk),maxg(:,lchnk),ideep(:,lchnk), 1, lengath(lchnk),  &
-                     nstep,   fracis,  ptend%q, dpdry)
+                     du(:,:,lchnk), eu(:,:,lchnk), ed(:,:,lchnk), dp(:,:,lchnk),  &
+                     jt_1(:,lchnk),maxg_1(:,lchnk), ideep(:,lchnk), 1, lengath(lchnk),  &
+                     nstep,   fracis,  ptend%q, dpdry, jt_2(:,lchnk),maxg_2(:,lchnk))
       call t_stopf ('convtran2')
    end if
 

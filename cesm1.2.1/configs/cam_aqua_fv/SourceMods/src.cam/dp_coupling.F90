@@ -496,8 +496,8 @@ chnk_loop2 : &
                    ! Comment out these log messages since they can make the log files so
                    ! large that they're unusable.
                    !if (dqreq>1.e-14_r8 .and. debug_adjust_print) write(iulog,*) 'dpcoup dqreq', m, lchnk, i, qbot, qbotm1, dqreq
-                    if (dqreq>qmin(m) .and. dqreq>fraction*qbotm1 .and. debug_adjust_print) &
-                                                                write(iulog,*) 'dpcoup dqreq', m, lchnk, i, qbot, qbotm1, dqreq
+                    !if (dqreq>qmin(m) .and. dqreq>fraction*qbotm1 .and. debug_adjust_print) &
+                    !                                            write(iulog,*) 'dpcoup dqreq', m, lchnk, i, qbot, qbotm1, dqreq
                 else 
                    ! Comment out these log messages since they can make the log files so
                    ! large that they're unusable.

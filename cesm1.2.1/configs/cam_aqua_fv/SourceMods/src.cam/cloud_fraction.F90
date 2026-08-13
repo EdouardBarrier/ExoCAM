@@ -248,7 +248,7 @@ subroutine cldfrc(lchnk   ,ncol    , pbuf,  &
        cloud   ,rhcloud, clc     ,pdel    , &
        cmfmc   ,cmfmc2  ,landfrac,snowh   ,concld  ,cldst   , &
        ts      ,sst     ,ps      ,zdu     ,ocnfrac ,&
-       rhu00   ,cldice  ,icecldf ,liqcldf ,relhum  ,dindex )
+       rhu00   ,cldice  ,icecldf ,liqcldf ,relhum  ,dindex, zm_lcl, sh_lcl )
     !----------------------------------------------------------------------- 
     ! 
     ! Purpose: 
@@ -299,7 +299,9 @@ subroutine cldfrc(lchnk   ,ncol    , pbuf,  &
     real(r8), intent(in) :: phis(pcols)           ! surface geopotential
     real(r8), intent(in) :: shfrc(pcols,pver)     ! cloud fraction from convect_shallow
     real(r8), intent(in) :: cldice(pcols,pver)    ! cloud ice mixing ratio
-    logical,  intent(in)  :: use_shfrc
+    logical,  intent(in) :: use_shfrc
+    logical,  intent(in), optional :: zm_lcl(pcols)         ! Whether the cloud deck was reached in the deep convective plume - used only in RK microphysics, not MG
+    logical,  intent(in), optional :: sh_lcl(pcols)         ! Whether the cloud deck was reached in the shallow convective plume - used only in RK microphysics, not MG
 
     ! Output arguments
     real(r8), intent(out) :: cloud(pcols,pver)     ! cloud fraction
@@ -407,8 +409,12 @@ subroutine cldfrc(lchnk   ,ncol    , pbuf,  &
     as=-68.4202_r8
     bs=0.983917_r8
     cs=2.81795_r8
-    !set wood and field paramters...
+    !set wood and field paramaters...
     Kc=75._r8
+
+
+   !  if (present(zm_lcl)) write(iulog,*) "lchnk:", lchnk, "zm_lcl:", zm_lcl
+   !  if (present(sh_lcl)) write(iulog,*) "lchnk:", lchnk, "sh_lcl:", sh_lcl
 
     ! Evaluate potential temperature and relative humidity
     ! If not computing ice cloud fraction then hybrid RH, if MG then water RH
@@ -478,8 +484,12 @@ subroutine cldfrc(lchnk   ,ncol    , pbuf,  &
              shallowcu(i,k) = max(0.0_r8,min(sh1*log(1.0_r8+sh2*cmfmc2(i,k+1)),0.30_r8))
           else
              shallowcu(i,k) = shfrc(i,k)
-          endif
+          endif          
           deepcu(i,k) = max(0.0_r8,min(dp1*log(1.0_r8+dp2*(cmfmc(i,k+1)-cmfmc2(i,k+1))),0.60_r8))
+
+          if (.not. sh_lcl(i)) shallowcu(i,k) = 0._r8 !no convective cloud if not condensation in plume
+          if (.not. zm_lcl(i)) deepcu(i,k) = 0._r8    !no convective cloud if not condensation in plume
+
           concld(i,k) = min(shallowcu(i,k) + deepcu(i,k),0.80_r8)
           rh(i,k) = (rh(i,k) - concld(i,k))/(1.0_r8 - concld(i,k))
        end do

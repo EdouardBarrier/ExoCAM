@@ -177,9 +177,9 @@ contains
 #endif
 
     if (masterproc) then
-      write(iulog,*)'Vertical Diffsuion :: kv_top_pressure',kv_top_pressure
-      write(iulog,*)'Vertical Diffsuion :: kv_top_scale',kv_top_scale
-      write(iulog,*)'Vertical Diffsuion :: kv_freetrop_scale',kv_freetrop_scale
+      write(iulog,*)'Vertical Diffusion :: kv_top_pressure',kv_top_pressure
+      write(iulog,*)'Vertical Diffusion :: kv_top_scale',kv_top_scale
+      write(iulog,*)'Vertical Diffusion :: kv_freetrop_scale',kv_freetrop_scale
     end if
 
 
@@ -947,7 +947,7 @@ contains
                              shflx     , cflx(:,1), obklen  , ustar    , pblh    , &
                              kvm       , kvh      , kvq     , cgh      , cgs     , &
                              tpert     , qpert    , cldn    , ocnfrac  , tke     , &
-                             ri        , &
+                             ri        , state%pint, &
                              eddy_scheme )
     
        call outfld( 'HB_ri',          ri,         pcols,   lchnk )

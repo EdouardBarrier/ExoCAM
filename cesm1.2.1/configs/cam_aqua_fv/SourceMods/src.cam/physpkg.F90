@@ -1702,6 +1702,9 @@ subroutine tphysbc (ztodt,               &
     real(r8) dlf2(pcols,pver)                  ! Detraining cld H20 from shallow convections
     real(r8) pflx(pcols,pverp)                 ! Conv rain flux thru out btm of lev
     real(r8) rtdt                              ! 1./ztodt
+    logical zm_lcl_reached(pcols)              ! Whether the cloud layer was hit in the deep convection scheme
+    logical sh_lcl_reached(pcols)              ! Whether the cloud layer was hit in the shallow convection scheme
+
 
     integer lchnk                              ! chunk identifier
     integer ncol                               ! number of atmospheric columns
@@ -1853,6 +1856,8 @@ subroutine tphysbc (ztodt,               &
 
     call t_stopf('bc_init')
 
+   !  write(iulog,*) "Before energy fixer. lchnk:", lchnk, "Max temperature:", maxval(state%t(:ncol,:pver)),"at:", maxloc(state%t(:ncol,:pver)), "Min:", minval(state%t(:ncol,:pver)), "at:", minloc(state%t(:ncol,:pver)) !if (lchnk==60)
+   !  write(iulog,*) "Before energy fixer. lchnk:", lchnk, "Max temperature:", maxval(state%t(:ncol,:pver)), "Min:", minval(state%t(:ncol,:pver))
     !===================================================
     ! Global mean total energy fixer
     !===================================================
@@ -1893,6 +1898,8 @@ subroutine tphysbc (ztodt,               &
     ! Dry adjustment
     ! This code block is not a good example of interfacing a parameterization
     !===================================================
+   ! write(iulog,*) "Before dadadj. lchnk:", lchnk, "Max temperature:", maxval(state%t(:ncol,:pver)),"at:", maxloc(state%t(:ncol,:pver)), "Min:", minval(state%t(:ncol,:pver)), "at:", minloc(state%t(:ncol,:pver))
+   ! write(iulog,*) "Before dadadj. lchnk:", lchnk, "Max temperature:", maxval(state%t(:ncol,:pver)), "Min:", minval(state%t(:ncol,:pver))
     call t_startf('dry_adjustment')
 
     ! Copy state info for input to dadadj
@@ -1915,6 +1922,9 @@ subroutine tphysbc (ztodt,               &
     !===================================================
     ! Moist convection
     !===================================================
+   !  write(iulog,*) "Before moist convection. lchnk:", lchnk, "Max temperature:", maxval(state%t(:ncol,:pver)),"at:", maxloc(state%t(:ncol,:pver)), "Min:", minval(state%t(:ncol,:pver)), "at:", minloc(state%t(:ncol,:pver))
+   !  write(iulog,*) "Before moist convection. lchnk:", lchnk, "Max temperature:", maxval(state%t(:ncol,:pver)), "Min:", minval(state%t(:ncol,:pver))
+
     call t_startf('moist_convection')
     !
     ! Since the PBL doesn't pass constituent perturbations, they
@@ -1924,9 +1934,9 @@ subroutine tphysbc (ztodt,               &
     call convect_deep_tend(  &
          cmfmc,      cmfcme,             &
          dlf,        pflx,    zdu,       &
-         rliq,    &
+         rliq,    zm_lcl_reached,   &
          ztodt,   &
-         state,   ptend, cam_in%landfrac, pbuf) 
+         state,   ptend, cam_in%landfrac, cam_in%ts, pbuf) 
     call t_stopf('convect_deep_tend')
 
     call physics_update(state, ptend, ztodt, tend)
@@ -1944,12 +1954,14 @@ subroutine tphysbc (ztodt,               &
     flx_cnd(:ncol) = prec_dp(:ncol) + rliq(:ncol)
     call check_energy_chng(state, tend, "convect_deep", nstep, ztodt, zero, flx_cnd, snow_dp, zero)
 
+   !  write(iulog,*) "Before shallow convection. lchnk:", lchnk, "Max temperature:", maxval(state%t(:ncol,:pver)),"at:", maxloc(state%t(:ncol,:pver)), "Min:", minval(state%t(:ncol,:pver)), "at:", minloc(state%t(:ncol,:pver))
+   !  write(iulog,*) "Before shallow convection. lchnk:", lchnk, "Max temperature:", maxval(state%t(:ncol,:pver)), "Min:", minval(state%t(:ncol,:pver))
     !
     ! Call Hack (1994) convection scheme to deal with shallow/mid-level convection
     !
     call t_startf ('convect_shallow_tend')
 
-    call convect_shallow_tend (ztodt   , cmfmc,  cmfmc2  ,&
+    call convect_shallow_tend (ztodt   , cmfmc,  cmfmc2 , sh_lcl_reached  , &
          dlf        , dlf2   ,  rliq   , rliq2, & 
          state      , ptend  ,  pbuf)
     call t_stopf ('convect_shallow_tend')
@@ -1997,6 +2009,9 @@ subroutine tphysbc (ztodt,               &
 
     call t_stopf('carma_timestep_tend')
 
+   ! write(iulog,*) "Before cloud microphysics. lchnk:", lchnk, "Max temperature:", maxval(state%t(:ncol,:pver)),"at:", maxloc(state%t(:ncol,:pver)), "Min:", minval(state%t(:ncol,:pver)), "at:", minloc(state%t(:ncol,:pver))
+   ! write(iulog,*) "Before cloud microphysics. lchnk:", lchnk, "Max temperature:", maxval(state%t(:ncol,:pver)), "Min:", minval(state%t(:ncol,:pver))
+
     if( microp_scheme == 'RK' ) then
 
        !===================================================
@@ -2008,7 +2023,7 @@ subroutine tphysbc (ztodt,               &
             cam_in%icefrac, cam_in%landfrac, cam_in%ocnfrac, &
             landm, cam_in%snowhland, & ! sediment
             dlf, dlf2, & ! detrain
-            rliq  , & ! check energy after detrain
+            rliq  , zm_lcl_reached  , sh_lcl_reached  , & ! check energy after detrain
             cmfmc,   cmfmc2, &
             cam_in%ts,      cam_in%sst,        zdu)
 
@@ -2161,6 +2176,9 @@ subroutine tphysbc (ztodt,               &
     !===================================================
     ! Radiation computations
     !===================================================
+
+   !  write(iulog,*) "Before radiation. lchnk:", lchnk, "Max temperature:", maxval(state%t(:ncol,:pver)),"at:", maxloc(state%t(:ncol,:pver)), "Min:", minval(state%t(:ncol,:pver)), "at:", minloc(state%t(:ncol,:pver))
+   !  write(iulog,*) "Before radiation. lchnk:", lchnk, "Max temperature:", maxval(state%t(:ncol,:pver)), "Min:", minval(state%t(:ncol,:pver))
     call t_startf('radiation')
     if (do_exo_rt) then 
       call exo_radiation_tend(state,ptend, pbuf, &
@@ -2186,6 +2204,9 @@ subroutine tphysbc (ztodt,               &
     call check_energy_chng(state, tend, "radheat", nstep, ztodt, zero, zero, zero, net_flx)
 
     call t_stopf('radiation')
+
+   ! write(iulog,*) "After tphysbc. lchnk:", lchnk, "Max temperature:", maxval(state%t(:ncol,:pver)),"at:", maxloc(state%t(:ncol,:pver)), "Min:", minval(state%t(:ncol,:pver)), "at:", minloc(state%t(:ncol,:pver))
+   ! write(iulog,*) "After tphysbc. lchnk:", lchnk, "Max temperature:", maxval(state%t(:ncol,:pver)), "Min:", minval(state%t(:ncol,:pver))
 
     ! Diagnose the location of the tropopause and its location to the history file(s).
     call t_startf('tropopause')

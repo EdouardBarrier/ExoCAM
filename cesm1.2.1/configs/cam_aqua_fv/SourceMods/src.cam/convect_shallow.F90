@@ -17,7 +17,7 @@
    use cam_history,       only : outfld, addfld, add_default, phys_decomp
    use cam_logfile,       only : iulog
    use phys_control,      only : phys_getopts
-   use exoplanet_mod,     only : exo_convect_plim
+      use exoplanet_mod,     only : exo_convect_plim
 
    implicit none
    private                 
@@ -346,7 +346,7 @@
   !                                                                                !
   !=============================================================================== !
 
-  subroutine convect_shallow_tend( ztodt  , cmfmc   , cmfmc2   , &
+  subroutine convect_shallow_tend( ztodt  , cmfmc   , cmfmc2   , sh_lcl   , &
                                    qc     , qc2     , rliq     , rliq2    , & 
                                    state  , ptend_all, pbuf)
    use physics_buffer,  only : physics_buffer_desc, pbuf_get_field, pbuf_set_field, pbuf_old_tim_idx
@@ -378,6 +378,7 @@
    real(r8),            intent(out)   :: cmfmc2(pcols,pverp)             ! Updraft mass flux by shallow convection [ kg/s/m2 ]
    real(r8),            intent(out)   :: rliq2(pcols)                    ! Vertically-integrated reserved cloud condensate [ m/s ]
    real(r8),            intent(out)   :: qc2(pcols,pver)                 ! Same as qc but only from shallow convection scheme
+   logical,            intent(out)   :: sh_lcl(pcols)                   ! Whether there is precipitation happening in layer
 
    
 
@@ -509,6 +510,7 @@
 
    !  This field probably should reference the pbuf tpert field but it doesnt
    tpert(:ncol)         = 0._r8
+   sh_lcl(:pcols)        = .false.
 
 
    select case (shallow_scheme)
@@ -537,7 +539,7 @@
       snow        = 0._r8
 
    case('Hack') ! Hack scheme
-                                   
+                        
       lq(:) = .TRUE.
       call physics_ptend_init( ptend_loc, state%psetcols, 'cmfmca', ls=.true., lq=lq  ) ! Initialize local ptend type
 
@@ -641,6 +643,8 @@
       if( maxval(cmfmc2(i,:pver)) <= 0._r8 ) then
           freqsh(i) = 1._r8
       end if
+      if (precc(i) > 0._r8) sh_lcl(i) = .true.  !precc is a +ve quantity
+      !write(iulog,*) "max precc:", maxval(precc), "min precc:", minval(precc)
    end do
 
    ! ------------------------------------------------------------------------------ !
