@@ -1,8 +1,8 @@
-discover
-/discover/nobackup/etwolf/cesm_scratch/cases
-/discover/nobackup/etwolf/models
-/discover/nobackup/etwolf/models
-/discover/nobackup/etwolf/models
+ioa
+/home/efxlb2/gcm/cesm1_2_1/scripts
+/home/efxlb2/gcm/updated_exocams
+/home/efxlb2/gcm/updated_exocams
+/home/efxlb2/gcm
 
 ########################################3
 machine name
