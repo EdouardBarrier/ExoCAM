@@ -24,6 +24,7 @@ module shr_flux_mod
    use shr_sys_mod     ! shared system routines
    use shr_log_mod, only: s_loglev  => shr_log_Level
    use shr_log_mod, only: s_logunit => shr_log_Unit
+   use exoplanet_mod, only: deep_atmosphere, qbot_fixed
 
    implicit none
 
@@ -171,8 +172,8 @@ SUBROUTINE shr_flux_atmOcn(nMax  ,zbot  ,ubot  ,vbot  ,thbot ,   &
 
 
    
-   real(R8)    :: t_rel  ! factor applied to the moisture forcing
-   real(r8)    :: q_rel  ! bottom layer q which we force to
+   real(R8)    :: t_rel  ! factor applied to the moisture forcing, effective timescale
+                         ! kept small but without affecting model stability
 
    
    qsat(Tk, P) =   (shr_const_mwwv/shr_const_mwdair)*(611.2_r8*exp((17.67_r8*(Tk-273.15_R8))/(Tk-29.65_r8))) /&
@@ -205,7 +206,6 @@ SUBROUTINE shr_flux_atmOcn(nMax  ,zbot  ,ubot  ,vbot  ,thbot ,   &
 !-------------------------------------------------------------------------------
 
    t_rel = 0.001_R8
-   q_rel = 0.2_r8
    
    if (debug > 0 .and. s_loglev > 0) write(s_logunit,F00) "enter"
 
@@ -315,16 +315,31 @@ SUBROUTINE shr_flux_atmOcn(nMax  ,zbot  ,ubot  ,vbot  ,thbot ,   &
         tau = rbot(n) * ustar * ustar 
        
         !--- momentum flux ---
-        taux(n) = tau * (ubot(n)-us(n)) / vmag
-        tauy(n) = tau * (vbot(n)-vs(n)) / vmag
-        
+        if (deep_atmosphere) then
+            taux(n) = 0.0_r8
+            tauy(n) = 0.0_r8
+        else
+            taux(n) = tau * (ubot(n)-us(n)) / vmag
+            tauy(n) = tau * (vbot(n)-vs(n)) / vmag
+        end if
+
         !--- heat flux ---
+        if (deep_atmosphere) then
+            sen(n) = 0.0_r8
+            lat(n) = 0.0_r8
+        else
         sen (n) =     cp * tau * tstar / ustar 
         lat (n) =  shr_const_latvap * tau * qstar / ustar
-        lwup(n) = -shr_const_stebol * ts(n)**4
+        end if
+
+        lwup(n) = -shr_const_stebol * ts(n)**4 !do this regardless of bottom type
       
         !--- water flux ---
-        evap(n) = lat(n)/ (shr_const_latvap)
+        if (deep_atmosphere) then
+            evap(n) = (qbot(n) - qbot_fixed) * t_rel
+        else
+            evap(n) = lat(n)/ (shr_const_latvap)
+        end if
 
 
       !   if (n==1) then

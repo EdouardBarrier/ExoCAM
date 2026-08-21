@@ -171,8 +171,12 @@ module exoplanet_mod
   real(r8), public, parameter :: exo_lnd_albifr_sat = 0.30    ! land albedo, infrared, saturated soil
 
   !! ============== SURFACE CONDITIONS ============== !!
-  real(r8), public, parameter :: t_int = 30.0_r8        ! internal temperature (K) - applied as a temperature forcing to the slab ocean
-
+  real(r8), public, parameter :: t_int = 30.0_r8         ! internal temperature (K) - applied as a temperature forcing to the slab ocean
+  logical, public, parameter :: deep_atmosphere = .false. ! switch to change surface-atmosphere fluxes. if false, normal slab ocean fluxes.
+                                                         ! if true, slab ocean acts a thermal buffer, and the atmosphere bottom moisture is forced 
+                                                         ! towards a fixed value. surface drag, sensible and latent heat transport are zeroed out
+                                                         ! N.B.: model compset should not include sea ice for this to work properly (e.g. ...AQN instead of ...AQI in -compset)
+  real(r8), public, parameter :: qbot_fixed = 0.22_r8    ! humidity (kg/kg) the atmosphere bottom is forced towards. only used if deep_atmosphere is .true.
 
   !! ===================================================================== !!
   !! ======================= FUNDAMENTAL CONSTANTS  ====================== !!
